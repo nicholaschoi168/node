@@ -41,8 +41,8 @@ from testrunner.outproc import test262
 
 # TODO(littledan): move the flag mapping into the status file
 FEATURE_FLAGS = {
-    'Intl.NumberFormat-v3': '--harmony_intl_number_format_v3',
-    'Symbol.prototype.description': '--harmony-symbol-description',
+    'Intl.NumberFormat-v3': '--harmony-intl-number-format-v3',
+    'Intl.DurationFormat': '--harmony-intl-duration-format',
     'FinalizationRegistry': '--harmony-weak-refs-with-cleanup-some',
     'WeakRef': '--harmony-weak-refs-with-cleanup-some',
     'host-gc-required': '--expose-gc-as=v8GC',
@@ -50,9 +50,12 @@ FEATURE_FLAGS = {
     'import-assertions': '--harmony-import-assertions',
     'resizable-arraybuffer': '--harmony-rab-gsab',
     'Temporal': '--harmony-temporal',
-    'array-find-from-last': '--harmony_array_find_last',
+    'array-find-from-last': '--harmony-array-find-last',
     'ShadowRealm': '--harmony-shadow-realm',
     'regexp-v-flag': '--harmony-regexp-unicode-sets',
+    'array-grouping': '--harmony-array-grouping',
+    'change-array-by-copy': '--harmony-change-array-by-copy',
+    'symbols-as-weakmap-keys': '--harmony-symbol-as-weakmap-key',
 }
 
 SKIPPED_FEATURES = set([])

@@ -585,6 +585,10 @@ Type OperationTyper::SpeculativeBigIntAsUintN(Type) {
 
 Type OperationTyper::CheckBigInt(Type type) { return Type::BigInt(); }
 
+Type OperationTyper::CheckedBigIntToBigInt64(Type type) {
+  return Type::SignedBigInt64();
+}
+
 Type OperationTyper::NumberAdd(Type lhs, Type rhs) {
   DCHECK(lhs.Is(Type::Number()));
   DCHECK(rhs.Is(Type::Number()));

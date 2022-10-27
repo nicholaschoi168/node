@@ -17,6 +17,7 @@
 #include "src/execution/execution.h"
 #include "src/execution/isolate.h"
 #include "src/execution/messages.h"
+#include "src/flags/flags.h"
 #include "src/handles/handles.h"
 #include "src/heap/factory.h"
 #include "src/objects/fixed-array.h"
@@ -84,10 +85,9 @@ class WasmStreaming::WasmStreamingImpl {
       std::function<void(CompiledWasmModule)> callback) {
     streaming_decoder_->SetMoreFunctionsCanBeSerializedCallback(
         [callback = std::move(callback),
-         streaming_decoder = streaming_decoder_](
+         url = streaming_decoder_->shared_url()](
             const std::shared_ptr<i::wasm::NativeModule>& native_module) {
-          base::Vector<const char> url = streaming_decoder->url();
-          callback(CompiledWasmModule{native_module, url.begin(), url.size()});
+          callback(CompiledWasmModule{native_module, url->data(), url->size()});
         });
   }
 
@@ -1174,8 +1174,8 @@ void WebAssemblyTable(const v8::FunctionCallbackInfo<v8::Value>& args) {
                string->StringEquals(v8_str(isolate, "eqref"))) {
       type = i::wasm::kWasmEqRef;
     } else if (enabled_features.has_gc() &&
-               string->StringEquals(v8_str(isolate, "dataref"))) {
-      type = i::wasm::kWasmDataRef;
+               string->StringEquals(v8_str(isolate, "structref"))) {
+      type = i::wasm::kWasmStructRef;
     } else if (enabled_features.has_gc() &&
                string->StringEquals(v8_str(isolate, "arrayref"))) {
       type = i::wasm::kWasmArrayRef;
@@ -1293,27 +1293,22 @@ void WebAssemblyMemory(const v8::FunctionCallbackInfo<v8::Value>& args) {
   }
 
   auto shared = i::SharedFlag::kNotShared;
-  auto enabled_features = i::wasm::WasmFeatures::FromIsolate(i_isolate);
-  if (enabled_features.has_threads()) {
-    // Shared property of descriptor
-    Local<String> shared_key = v8_str(isolate, "shared");
-    v8::MaybeLocal<v8::Value> maybe_value =
-        descriptor->Get(context, shared_key);
-    v8::Local<v8::Value> value;
-    if (maybe_value.ToLocal(&value)) {
-      shared = value->BooleanValue(isolate) ? i::SharedFlag::kShared
-                                            : i::SharedFlag::kNotShared;
-    } else {
-      DCHECK(i_isolate->has_scheduled_exception());
-      return;
-    }
+  // Shared property of descriptor
+  Local<String> shared_key = v8_str(isolate, "shared");
+  v8::MaybeLocal<v8::Value> maybe_value = descriptor->Get(context, shared_key);
+  v8::Local<v8::Value> value;
+  if (maybe_value.ToLocal(&value)) {
+    shared = value->BooleanValue(isolate) ? i::SharedFlag::kShared
+                                          : i::SharedFlag::kNotShared;
+  } else {
+    DCHECK(i_isolate->has_scheduled_exception());
+    return;
+  }
 
-    // Throw TypeError if shared is true, and the descriptor has no "maximum"
-    if (shared == i::SharedFlag::kShared && maximum == -1) {
-      thrower.TypeError(
-          "If shared is true, maximum property should be defined.");
-      return;
-    }
+  // Throw TypeError if shared is true, and the descriptor has no "maximum"
+  if (shared == i::SharedFlag::kShared && maximum == -1) {
+    thrower.TypeError("If shared is true, maximum property should be defined.");
+    return;
   }
 
   i::Handle<i::JSObject> memory_obj;
@@ -1390,8 +1385,8 @@ bool GetValueType(Isolate* isolate, MaybeLocal<Value> maybe,
              string->StringEquals(v8_str(isolate, "anyref"))) {
     *type = i::wasm::kWasmAnyRef;
   } else if (enabled_features.has_gc() &&
-             string->StringEquals(v8_str(isolate, "dataref"))) {
-    *type = i::wasm::kWasmDataRef;
+             string->StringEquals(v8_str(isolate, "structref"))) {
+    *type = i::wasm::kWasmStructRef;
   } else if (enabled_features.has_gc() &&
              string->StringEquals(v8_str(isolate, "arrayref"))) {
     *type = i::wasm::kWasmArrayRef;
@@ -1565,8 +1560,6 @@ void WebAssemblyGlobal(const v8::FunctionCallbackInfo<v8::Value>& args) {
       break;
     }
     case i::wasm::kRtt:
-      // TODO(7748): Implement.
-      UNIMPLEMENTED();
     case i::wasm::kI8:
     case i::wasm::kI16:
     case i::wasm::kVoid:
@@ -1749,7 +1742,7 @@ void EncodeExceptionValues(v8::Isolate* isolate,
           case i::wasm::HeapType::kAny:
           case i::wasm::HeapType::kEq:
           case i::wasm::HeapType::kI31:
-          case i::wasm::HeapType::kData:
+          case i::wasm::HeapType::kStruct:
           case i::wasm::HeapType::kArray:
           case i::wasm::HeapType::kString:
           case i::wasm::HeapType::kStringViewWtf8:
@@ -2265,19 +2258,10 @@ void WasmObjectToJSReturnValue(v8::ReturnValue<v8::Value>& return_value,
       return;
     case i::wasm::HeapType::kBottom:
       UNREACHABLE();
-    case i::wasm::HeapType::kData:
+    case i::wasm::HeapType::kStruct:
     case i::wasm::HeapType::kArray:
     case i::wasm::HeapType::kEq:
     case i::wasm::HeapType::kAny: {
-      if (!i::v8_flags.wasm_gc_js_interop && value->IsWasmObject()) {
-        // Transform wasm object into JS-compliant representation.
-        i::Handle<i::JSObject> wrapper =
-            isolate->factory()->NewJSObject(isolate->object_function());
-        i::JSObject::AddProperty(
-            isolate, wrapper, isolate->factory()->wasm_wrapped_object_symbol(),
-            value, i::NONE);
-        value = wrapper;
-      }
       return_value.Set(Utils::ToLocal(value));
       return;
     }
@@ -2289,17 +2273,6 @@ void WasmObjectToJSReturnValue(v8::ReturnValue<v8::Value>& return_value,
               i::Handle<i::WasmInternalFunction>::cast(value)->external(),
               isolate);
         }
-        return_value.Set(Utils::ToLocal(value));
-        return;
-      }
-      if (!i::v8_flags.wasm_gc_js_interop && value->IsWasmObject()) {
-        // Transform wasm object into JS-compliant representation.
-        i::Handle<i::JSObject> wrapper =
-            isolate->factory()->NewJSObject(isolate->object_function());
-        i::JSObject::AddProperty(
-            isolate, wrapper, isolate->factory()->wasm_wrapped_object_symbol(),
-            value, i::NONE);
-        value = wrapper;
       }
       return_value.Set(Utils::ToLocal(value));
       return;
@@ -2574,7 +2547,7 @@ void WebAssemblyExceptionGetArg(
           case i::wasm::HeapType::kAny:
           case i::wasm::HeapType::kEq:
           case i::wasm::HeapType::kI31:
-          case i::wasm::HeapType::kData:
+          case i::wasm::HeapType::kStruct:
           case i::wasm::HeapType::kArray:
           case i::wasm::HeapType::kString:
           case i::wasm::HeapType::kStringViewWtf8:
@@ -2638,7 +2611,7 @@ void WebAssemblyExceptionGetArg(
         case i::wasm::HeapType::kEq:
         case i::wasm::HeapType::kI31:
         case i::wasm::HeapType::kArray:
-        case i::wasm::HeapType::kData:
+        case i::wasm::HeapType::kStruct:
         case i::wasm::HeapType::kString:
         case i::wasm::HeapType::kStringViewWtf8:
         case i::wasm::HeapType::kStringViewWtf16:
@@ -2725,7 +2698,6 @@ void WebAssemblyGlobalGetValueCommon(
       break;
     }
     case i::wasm::kRtt:
-      UNIMPLEMENTED();  // TODO(7748): Implement.
     case i::wasm::kI8:
     case i::wasm::kI16:
     case i::wasm::kBottom:
@@ -2992,9 +2964,10 @@ void WasmJs::Install(Isolate* isolate, bool exposed_on_global_object) {
   InstallFunc(isolate, webassembly, "validate", WebAssemblyValidate, 1);
   InstallFunc(isolate, webassembly, "instantiate", WebAssemblyInstantiate, 1);
 
-  // TODO(tebbi): Put this behind its own flag once --wasm-gc-js-interop gets
-  // closer to shipping.
-  if (v8_flags.wasm_gc_js_interop) {
+  // TODO(7748): These built-ins should not be shipped with wasm GC.
+  // Either a new flag will be needed or the built-ins have to be deleted prior
+  // to shipping.
+  if (v8_flags.experimental_wasm_gc) {
     SimpleInstallFunction(
         isolate, webassembly, "experimentalConvertArrayToString",
         Builtin::kExperimentalWasmConvertArrayToString, 0, true);

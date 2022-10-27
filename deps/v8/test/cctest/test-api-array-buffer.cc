@@ -180,7 +180,7 @@ THREADED_TEST(ArrayBuffer_DetachingApi) {
   CHECK_EQ(1023, dv->ByteLength());
 
   Externalize(buffer);
-  buffer->Detach();
+  buffer->Detach(v8::Local<v8::Value>()).Check();
   CHECK_EQ(0, buffer->ByteLength());
   CheckIsDetached(u8a);
   CheckIsDetached(u8c);
@@ -216,7 +216,7 @@ THREADED_TEST(ArrayBuffer_DetachingScript) {
   v8::Local<v8::DataView> dv = CompileRun("dv").As<v8::DataView>();
 
   Externalize(ab);
-  ab->Detach();
+  ab->Detach(v8::Local<v8::Value>()).Check();
   CHECK_EQ(0, ab->ByteLength());
   CHECK_EQ(0, v8_run_int32value(v8_compile("ab.byteLength")));
 
@@ -267,7 +267,7 @@ THREADED_TEST(ArrayBuffer_ExternalizeEmpty) {
 }
 
 THREADED_TEST(SharedArrayBuffer_ApiInternalToExternal) {
-  i::FLAG_harmony_sharedarraybuffer = true;
+  i::v8_flags.harmony_sharedarraybuffer = true;
   LocalContext env;
   v8::Isolate* isolate = env->GetIsolate();
   v8::HandleScope handle_scope(isolate);
@@ -302,7 +302,7 @@ THREADED_TEST(SharedArrayBuffer_ApiInternalToExternal) {
 }
 
 THREADED_TEST(SharedArrayBuffer_JSInternalToExternal) {
-  i::FLAG_harmony_sharedarraybuffer = true;
+  i::v8_flags.harmony_sharedarraybuffer = true;
   LocalContext env;
   v8::Isolate* isolate = env->GetIsolate();
   v8::HandleScope handle_scope(isolate);

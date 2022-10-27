@@ -86,6 +86,7 @@ class MaglevGraphVerifier {
       case Opcode::kCreateObjectLiteral:
       case Opcode::kCreateShallowObjectLiteral:
       case Opcode::kCreateRegExpLiteral:
+      case Opcode::kDebugBreak:
       case Opcode::kDeopt:
       case Opcode::kFloat64Constant:
       case Opcode::kGapMove:
@@ -116,12 +117,14 @@ class MaglevGraphVerifier {
       // TODO(victorgomes): Can we check that the input is actually a receiver?
       case Opcode::kCheckHeapObject:
       case Opcode::kCheckMaps:
+      case Opcode::kCheckValue:
       case Opcode::kCheckMapsWithMigration:
       case Opcode::kCheckSmi:
       case Opcode::kCheckNumber:
       case Opcode::kCheckString:
       case Opcode::kCheckSymbol:
       case Opcode::kCheckedInternalizedString:
+      case Opcode::kCheckedObjectToIndex:
       // TODO(victorgomes): Can we check that the input is Boolean?
       case Opcode::kBranchIfToBooleanTrue:
       case Opcode::kBranchIfRootConstant:
@@ -135,6 +138,7 @@ class MaglevGraphVerifier {
       case Opcode::kGetTemplateObject:
       case Opcode::kLogicalNot:
       case Opcode::kSetPendingMessage:
+      case Opcode::kStringLength:
       case Opcode::kToBooleanLogicalNot:
       case Opcode::kTestUndetectable:
       case Opcode::kTestTypeOf:
@@ -147,11 +151,14 @@ class MaglevGraphVerifier {
         break;
       case Opcode::kSwitch:
       case Opcode::kCheckedSmiTag:
+      case Opcode::kUnsafeSmiTag:
       case Opcode::kChangeInt32ToFloat64:
+      case Opcode::kInlinedBuiltinStringFromCharCode:
         DCHECK_EQ(node->input_count(), 1);
         CheckValueInputIs(node, 0, ValueRepresentation::kInt32);
         break;
       case Opcode::kFloat64Box:
+      case Opcode::kCheckedTruncateFloat64ToInt32:
         DCHECK_EQ(node->input_count(), 1);
         CheckValueInputIs(node, 0, ValueRepresentation::kFloat64);
         break;
@@ -176,10 +183,6 @@ class MaglevGraphVerifier {
       case Opcode::kGenericLessThan:
       case Opcode::kGenericLessThanOrEqual:
       case Opcode::kGenericStrictEqual:
-      case Opcode::kCheckJSArrayBounds:
-      case Opcode::kCheckJSObjectElementsBounds:
-      case Opcode::kLoadTaggedElement:
-      case Opcode::kLoadDoubleElement:
       case Opcode::kGetIterator:
       case Opcode::kTaggedEqual:
       case Opcode::kTaggedNotEqual:
@@ -224,7 +227,7 @@ class MaglevGraphVerifier {
       case Opcode::kInt32MultiplyWithOverflow:
       case Opcode::kInt32DivideWithOverflow:
       // case Opcode::kInt32ExponentiateWithOverflow:
-      // case Opcode::kInt32ModulusWithOverflow:
+      case Opcode::kInt32ModulusWithOverflow:
       case Opcode::kInt32BitwiseAnd:
       case Opcode::kInt32BitwiseOr:
       case Opcode::kInt32BitwiseXor:
@@ -238,6 +241,7 @@ class MaglevGraphVerifier {
       case Opcode::kInt32GreaterThan:
       case Opcode::kInt32GreaterThanOrEqual:
       case Opcode::kBranchIfInt32Compare:
+      case Opcode::kCheckInt32Condition:
         DCHECK_EQ(node->input_count(), 2);
         CheckValueInputIs(node, 0, ValueRepresentation::kInt32);
         CheckValueInputIs(node, 1, ValueRepresentation::kInt32);
@@ -274,6 +278,15 @@ class MaglevGraphVerifier {
         for (int i = 0; i < node->input_count(); i++) {
           CheckValueInputIs(node, i, ValueRepresentation::kTagged);
         }
+        break;
+      case Opcode::kCheckJSArrayBounds:
+      case Opcode::kCheckJSObjectElementsBounds:
+      case Opcode::kLoadTaggedElement:
+      case Opcode::kLoadDoubleElement:
+      case Opcode::kStringAt:
+        DCHECK_EQ(node->input_count(), 2);
+        CheckValueInputIs(node, 0, ValueRepresentation::kTagged);
+        CheckValueInputIs(node, 1, ValueRepresentation::kInt32);
         break;
       case Opcode::kCallBuiltin: {
         CallBuiltin* call_builtin = node->Cast<CallBuiltin>();

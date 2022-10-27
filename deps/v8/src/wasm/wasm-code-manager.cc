@@ -34,6 +34,7 @@
 #include "src/wasm/jump-table-assembler.h"
 #include "src/wasm/module-compiler.h"
 #include "src/wasm/names-provider.h"
+#include "src/wasm/pgo.h"
 #include "src/wasm/wasm-debug.h"
 #include "src/wasm/wasm-engine.h"
 #include "src/wasm/wasm-import-wrapper-cache.h"
@@ -151,7 +152,7 @@ base::AddressRegion DisjointAllocationPool::AllocateInRegion(
 }
 
 Address WasmCode::constant_pool() const {
-  if (v8_flags.enable_embedded_constant_pool) {
+  if (V8_EMBEDDED_CONSTANT_POOL_BOOL) {
     if (constant_pool_offset_ < code_comments_offset_) {
       return instruction_start() + constant_pool_offset_;
     }
@@ -784,7 +785,6 @@ base::Vector<byte> WasmCodeAllocator::AllocateForCodeInRegion(
     }
   }
   DCHECK(IsAligned(code_space.begin(), kCodeAlignment));
-  allocated_code_space_.Merge(code_space);
   generated_code_size_.fetch_add(code_space.size(), std::memory_order_relaxed);
 
   TRACE_HEAP("Code alloc for %p: 0x%" PRIxPTR ",+%zu\n", this,
@@ -1886,8 +1886,8 @@ NativeModule::~NativeModule() {
   import_wrapper_cache_.reset();
 
   // If experimental PGO support is enabled, serialize the PGO data now.
-  if (V8_UNLIKELY(FLAG_experimental_wasm_pgo_to_file)) {
-    DumpProfileToFile(module_.get(), wire_bytes());
+  if (V8_UNLIKELY(v8_flags.experimental_wasm_pgo_to_file)) {
+    DumpProfileToFile(module_.get(), wire_bytes(), tiering_budgets_.get());
   }
 }
 
@@ -2335,16 +2335,6 @@ std::vector<std::unique_ptr<WasmCode>> NativeModule::AddCompiledCode(
   for (auto& result : results) {
     DCHECK(result.succeeded());
     total_code_space += RoundUp<kCodeAlignment>(result.code_desc.instr_size);
-    if (result.result_tier == ExecutionTier::kLiftoff) {
-      int index = result.func_index;
-      int* slots = &module()->functions[index].feedback_slots;
-#if DEBUG
-      int current_value = base::Relaxed_Load(slots);
-      DCHECK(current_value == 0 ||
-             current_value == result.feedback_vector_slots);
-#endif
-      base::Relaxed_Store(slots, result.feedback_vector_slots);
-    }
   }
   base::Vector<byte> code_space;
   NativeModule::JumpTablesRef jump_tables;
