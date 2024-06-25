@@ -1,3 +1,4 @@
 gql[aiohttp]
 nvdlib==0.5.8
 packaging
+anyio>=4.4.0 # not directly required, pinned by Snyk to avoid a vulnerability
